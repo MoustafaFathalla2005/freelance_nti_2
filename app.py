@@ -2,7 +2,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score
@@ -104,8 +105,12 @@ channel_rev = pd.DataFrame({
     "Channel": channel_names,
     "Revenue": [df_final[df_final[c]==1]["Revenue"].sum() for c in channel_cols]
 })
-fig1 = px.bar(channel_rev, x="Channel", y="Revenue", text_auto=True, title="Revenue by Channel")
-st.plotly_chart(fig1, use_container_width=True)
+
+fig1, ax1 = plt.subplots(figsize=(8,4))
+sns.barplot(data=channel_rev, x="Channel", y="Revenue", ax=ax1)
+ax1.set_title("Revenue by Channel")
+ax1.bar_label(ax1.containers[0])
+st.pyplot(fig1)
 
 # ---- Return Rate by Service Type ----
 st.subheader("Return Rate by Service Type")
@@ -115,8 +120,12 @@ service_rate = pd.DataFrame({
     "Service Type": service_names,
     "Return Rate": [df_final[df_final[c]==1]["Return_Visit"].mean() for c in service_cols]
 })
-fig2 = px.bar(service_rate, x="Service Type", y="Return Rate", text_auto=True, title="Return Rate by Service Type")
-st.plotly_chart(fig2, use_container_width=True)
+
+fig2, ax2 = plt.subplots(figsize=(8,4))
+sns.barplot(data=service_rate, x="Service Type", y="Return Rate", ax=ax2)
+ax2.set_title("Return Rate by Service Type")
+ax2.bar_label(ax2.containers[0])
+st.pyplot(fig2)
 
 # ---- Predict return probability for new customer ----
 st.markdown("---")
