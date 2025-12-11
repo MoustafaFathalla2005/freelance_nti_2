@@ -2,18 +2,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score
-
-# XGBoost optional
-try:
-    from xgboost import XGBClassifier
-    XGB_AVAILABLE = True
-except:
-    XGB_AVAILABLE = False
 
 st.set_page_config(page_title="Retention & Marketing Dashboard", layout="wide")
 st.title("💄 Client Retention & Marketing Dashboard")
@@ -30,14 +21,11 @@ df_raw = pd.read_excel(data_file, parse_dates=["Date"])
 st.subheader("Raw Data Sample")
 st.dataframe(df_raw.head())
 
-# ---- Prepare Retention Data ----
+# ---- Prepare Data ----
 st.markdown("### Data Preparation & Feature Engineering")
 df = df_raw.copy()
+df['Return_Visit'] = (df['Conversions'] > 0).astype(int)
 
-# Target: Return_Visit (Conversions > 0 => 1)
-df['Return_Visit'] = np.where(df['Conversions'] > 0, 1, 0)
-
-# RFM features by Customer Type
 rfm = df.groupby("Customer Type").agg(
     last_purchase=("Date", "max"),
     frequency=("Date", "count"),
@@ -47,14 +35,10 @@ rfm = df.groupby("Customer Type").agg(
 reference_date = df["Date"].max()
 rfm["recency_days"] = (reference_date - rfm["last_purchase"]).dt.days
 
-# Merge RFM features back
 df_final = df.merge(rfm, on="Customer Type", how="left")
-
-# Time features
 df_final["purchase_month"] = df_final["Date"].dt.month
 df_final["purchase_dayofweek"] = df_final["Date"].dt.dayofweek
 
-# Convert categorical columns to One-hot encoding
 categorical_cols = ["Channel", "Service Type", "Time of Day"]
 df_final = pd.get_dummies(df_final, columns=categorical_cols, drop_first=True)
 
@@ -72,23 +56,15 @@ if len(y.unique()) < 2:
     st.warning("Cannot train model: Return_Visit has only one class present in the data.")
 else:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-    if XGB_AVAILABLE:
-        model = XGBClassifier(
-            n_estimators=200, max_depth=5, learning_rate=0.05,
-            use_label_encoder=False, eval_metric="logloss"
-        )
-        st.info("Training XGBoost...")
-    else:
-        model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced")
-        st.info("Training RandomForest...")
-
+    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight="balanced")
+    st.info("Training RandomForest...")
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     st.success("Model trained successfully!")
     st.write(f"Accuracy: {accuracy_score(y_test, y_pred):.3f}")
     st.write(f"ROC AUC: {roc_auc_score(y_test, model.predict_proba(X_test)[:,1]):.3f}")
 
-# ---- Dashboard KPIs ----
+# ---- KPIs ----
 st.markdown("### KPIs Overview")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Records", df_final.shape[0])
@@ -105,12 +81,7 @@ channel_rev = pd.DataFrame({
     "Channel": channel_names,
     "Revenue": [df_final[df_final[c]==1]["Revenue"].sum() for c in channel_cols]
 })
-
-fig1, ax1 = plt.subplots(figsize=(8,4))
-sns.barplot(data=channel_rev, x="Channel", y="Revenue", ax=ax1)
-ax1.set_title("Revenue by Channel")
-ax1.bar_label(ax1.containers[0])
-st.pyplot(fig1)
+st.bar_chart(channel_rev.set_index("Channel"))
 
 # ---- Return Rate by Service Type ----
 st.subheader("Return Rate by Service Type")
@@ -120,14 +91,9 @@ service_rate = pd.DataFrame({
     "Service Type": service_names,
     "Return Rate": [df_final[df_final[c]==1]["Return_Visit"].mean() for c in service_cols]
 })
+st.bar_chart(service_rate.set_index("Service Type"))
 
-fig2, ax2 = plt.subplots(figsize=(8,4))
-sns.barplot(data=service_rate, x="Service Type", y="Return Rate", ax=ax2)
-ax2.set_title("Return Rate by Service Type")
-ax2.bar_label(ax2.containers[0])
-st.pyplot(fig2)
-
-# ---- Predict return probability for new customer ----
+# ---- Predict Return Probability ----
 st.markdown("---")
 st.subheader("Predict Return Probability")
 if model is not None:
@@ -136,7 +102,6 @@ if model is not None:
     time_of_day = st.selectbox("Time of Day", ["Morning","Afternoon","Evening"])
     channel = st.selectbox("Channel", ["Online", "Phone", "Walk-in", "Social Media"])
 
-    # إنشاء صف التنبؤ مع كل الأعمدة المطلوبة
     row_dict = {
         "Ad Spend": df_final["Ad Spend"].mean(),
         "Conversions": df_final["Conversions"].mean(),
@@ -151,7 +116,6 @@ if model is not None:
         "purchase_dayofweek": pd.Timestamp.now().weekday()
     }
 
-    # ملء الأعمدة الفئوية بشكل آمن
     for col in all_features:
         if col.startswith("Channel_"):
             row_dict[col] = 1 if col == f"Channel_{channel}" else 0
@@ -164,7 +128,6 @@ if model is not None:
                 row_dict[col] = 0
 
     row = pd.DataFrame([row_dict])
-
     proba = model.predict_proba(row[all_features])[0][1]
     st.metric("Predicted return probability", f"{proba*100:.1f}%")
 else:
